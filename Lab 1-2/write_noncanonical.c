@@ -21,7 +21,7 @@
 #define FALSE 0
 #define TRUE 1
 
-#define BUF_SIZE 40
+#define BUF_SIZE 256
 #define FLAG 0x7e
 #define ADDR_SEN 0x03
 #define ADDR_REC 0x01
@@ -121,16 +121,7 @@ int main(int argc, char *argv[])
     // The whole buffer must be sent even with the '\n'.
     buf[5] = '\n';
 
-    int bytes = write(fd, buf[0], 8);
-    sleep(1);
-    bytes = write(fd, buf[1], 8);
-    sleep(1);
-    bytes = write(fd, buf[2], 8);
-    sleep(1);
-    bytes = write(fd, buf[3], 8);
-    sleep(1);
-    bytes = write(fd, buf[4], 8);
-    sleep(1);
+    int bytes = write(fd, buf, BUF_SIZE);
     
     printf("%d bytes written\n", bytes);
     alarm(3);
