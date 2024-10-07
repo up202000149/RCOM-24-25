@@ -96,16 +96,19 @@ int main(int argc, char *argv[])
     // Loop for input
     unsigned char buf[BUF_SIZE + 1] = {0}; // +1: Save space for the final '\0' char
 
-    while (STOP == FALSE)
-    {
-        // Returns after 5 chars have been input
-        int bytes = read(fd, buf, BUF_SIZE);
-        buf[bytes] = '\0'; // Set end of string to '\0', so we can printf
+    int bytes = read(fd, buf, BUF_SIZE);
 
-        printf(":%s:%d\n", buf, bytes);
-        if (buf[0] == 'z')
-            STOP = TRUE;
-    }
+    printf("var = 0x%02X\n", buf[0]);
+    printf("var = 0x%02X\n", buf[1]);
+    printf("var = 0x%02X\n", buf[2]);
+    printf("var = 0x%02X\n", buf[3]);
+    printf("var = 0x%02X\n", buf[4]);
+
+    buf[2] = ua;
+    buf[3] = buf[1] ^ buf[2];
+    
+    bytes = write(fd, buf, BUF_SIZE);
+    
 
     // The while() cycle should be changed in order to respect the specifications
     // of the protocol indicated in the Lab guide
