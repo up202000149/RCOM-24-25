@@ -17,7 +17,9 @@ int llopen(LinkLayer connectionParameters)
         return -1;
     }
 
-    // TODO
+    /* TODO:
+        
+    */
 
     return 1;
 }
@@ -27,7 +29,13 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {
-    // TODO
+    /* TODO:
+    generate bcc2
+    implement n+1 stuffing
+    create i frame
+    send frame
+    enter read cycle
+    */
 
     return 0;
 }
@@ -37,7 +45,9 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {
-    // TODO
+    /* TODO:
+    
+    */
 
     return 0;
 }
@@ -47,8 +57,10 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {
-    // TODO
+    /* TODO:
+    */
 
     int clstat = closeSerialPort();
     return clstat;
 }
+
