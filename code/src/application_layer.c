@@ -4,6 +4,7 @@
 #include "link_layer.h"
 #include <string.h>
 #include <stdint.h>
+#include <stdio.h>
 
 #define START 0x01
 #define END 0x03
@@ -16,6 +17,8 @@
 void applicationLayer(const char *serialPort, const char *role, int baudRate,
                       int nTries, int timeout, const char *filename)
 {
+    FILE *f;
+    f = fopen(filename, "rw");
     LinkLayer parameters;
     strcpy(parameters.serialPort, serialPort);
     if(!strcmp(role,"rx")){
@@ -28,17 +31,16 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     parameters.timeout = timeout;
     
     llopen(parameters);
-
-    switch (parameters.role)
-    {
-    case LlTx:
+    printf("kill me!\n");
+    if(parameters.role == LlTx){
+        printf("enter switch\n");
         int fsize; // TODO: create function get file size
         uint8_t fsize_size; // TODO: definitly wrong, needs to convert from int to several uint8_t
 
         unsigned char start[4] = {START, SIZE, fsize_size, fsize};
         unsigned char end[4] = {END, SIZE, fsize_size, fsize};
         
-        llwrite(start, sizeof(start));
+        printf("%d bytes written", llwrite(start, sizeof(start)));
         
         uint16_t size;
         unsigned char data[BUF_SIZE] = {0};
@@ -57,28 +59,26 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
                 packet[4 + i] = data[i];
             }
 
-            llwrite(packet, size + 4);
+            printf("%d bytes written", llwrite(packet, size + 4));
 
             memset(packet, 0, BUF_SIZE + 4);
         }
         
         llwrite(end, sizeof(end));
         
-        break;
-    
-    case LlRx:
+    }else{
+        printf("enter switch\n");
         int endFlag = 0;
+        
         unsigned char r_packet[4 + BUF_SIZE] = {0};
         while (!endFlag)
         {
+             
             llread(r_packet);
             if(r_packet[0] == END){
                 
             }
         }
-        
-        
-        break;
     }
     /* TODO: 
     open connection --
@@ -92,5 +92,6 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         llread
     close connection
     */
+   fclose(f);
    llclose(0);
 }

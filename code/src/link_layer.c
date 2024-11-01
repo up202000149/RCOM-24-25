@@ -103,7 +103,7 @@ int llopen(LinkLayer connectionParameters)
 
     unsigned char buf[BUF_SIZE + 1] = {0}; 
 
-    if(connectionParameters.role==LlTx){
+    if(role == LlTx){
         buf[0] = FLAG;
         buf[1] = ANSSEN;
         buf[2] = CTRLSET;
@@ -128,9 +128,7 @@ int llopen(LinkLayer connectionParameters)
         else {
             printf("Error\n");
         }
-    }
-
-    else {
+    } else {
         enum State curState = FLAG_REC;
 
         while (!STOP) {
@@ -240,12 +238,12 @@ int llread(unsigned char *packet)
     enum ReadState state = START;
     int bytes = 0;
     unsigned char buf[BUF_SIZE], res[5];//TODO: needs buf size
-    uint8_t cur;
+    unsigned char cur;
     
 
     while (state != END)
     {   
-        if(0 > readByte(cur)) break;
+        if(0 > readByte(&cur)) break;
 
         switch (state)
         {
