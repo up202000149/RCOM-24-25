@@ -40,6 +40,7 @@ volatile int STOP = FALSE;
 ////////////////////////////////////////////////
 
 enum State { FLAG_REC, A_REC, C_REC, BCC_OK, FLAG_REC_END };
+enum ReadState {START, FLAG_REC, A_REC, CS_REC, CI_REC, BCCS_OK, BCCI_OK, CONTENT_REC, STOP};
 
 void processState(enum State *curState, unsigned char currByte) {
     switch (*curState) {
@@ -151,11 +152,11 @@ int llopen(LinkLayer connectionParameters)
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
 {   
-    uint8_t bcc2;
+    uint8_t bcc2 = 0xFF;
     int n;
 
     if(buf[0] == 2){
-        n = buf[1] % 2;
+        n = buf[1] % 2; //TODO: make work for other control fields
         
         //-----------buf2------------
         
@@ -230,11 +231,169 @@ int llwrite(const unsigned char *buf, int bufSize)
 // LLREAD
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
-{   
-    /*
-        await response
-        state machine
-    */
+{  
+    enum ReadState state = START;
+    int bytes = 0;
+    unsigned char buf[], res[5];//TODO: needs buf size
+    uint8_t cur;
+
+    while (state != STOP)
+    {   
+        if(0 > readByte(cur)) break;
+        
+        switch (state)
+        {
+        case START:
+            if(cur == FLAG){
+                state = FLAG_REC;
+                buf[bytes++] = cur;
+            }
+            break;
+        case FLAG_REC:
+            if(cur == (ANSREC || ANSSEN)){
+                state = A_REC;
+                buf[bytes++] = cur;
+            }
+            else if(cur == FLAG){
+                state = FLAG_REC;
+                bytes = 1;
+            }
+            else{
+                state = START;
+                bytes = 0;
+            }
+            break;
+        case A_REC:
+            if(cur == (CTRLSET || CTRLUA || DISC)){
+                state = CS_REC;
+                buf[bytes++] = cur;
+            }
+            else if(cur == (I0 || I1)){
+                state = CI_REC;
+                buf[bytes++] = cur;
+            }
+            else if(cur == FLAG){
+                state = FLAG_REC;
+                bytes = 1;
+            }
+            else{
+                state = START;
+                bytes = 0;
+            }
+            break;
+        case CS_REC:
+            if(cur == buf[bytes - 1] ^ buf[bytes - 2]){
+                state = BCCS_OK;
+                buf[bytes++] = cur;
+            }
+            else{
+                printf("bcc1 rejected");
+                state = START;
+                bytes = 0;
+            }
+            break;
+        case CI_REC:
+            if(cur == buf[bytes - 1] ^ buf[bytes - 2]){
+                state = BCCI_OK;
+                buf[bytes++] = cur;
+            }
+            else{
+                printf("bcc1 rejected");
+                state = START;
+                bytes = 0;
+            }
+            break;
+        case BCCS_OK:
+            if(cur == FLAG){
+                state = STOP;
+                buf[bytes] = cur;
+            }
+            else{
+                state = START;
+                bytes = 0;
+            }
+            break;
+        case BCCI_OK:
+            if(cur == FLAG){
+                state = FLAG_REC;
+                bytes = 1;
+            }
+            else{
+                state = CONTENT_REC;
+                buf[bytes++] = cur;
+            }
+            break;
+        case CONTENT_REC:
+            if(cur == FLAG){
+                state = STOP;
+                buf[bytes] = cur; 
+            }
+            else{
+                state = CONTENT_REC;
+                buf[bytes++] = cur;
+            }
+            break;
+        }
+    }
+    
+    if(buf[2] == (I0 || I1)){
+        int buf2Size = bytes - 4;
+        unsigned char buf2[buf2Size];
+
+        for(int i = 0; i < buf2Size; i++){
+            buf2[i] = buf[i + 4];
+        }
+
+        int buf3Size;
+        unsigned char buf3[buf2Size];
+        int removed = 0, flag = 0;
+
+        for(int i = 0; i < buf2Size; i++){
+            if(buf2[i] == 0x7D){
+                flag = 1;
+                removed++;
+            }else if(buf2[i] == 0x5E){
+                buf3[i - removed] = 0x7E;
+            }else if(buf2[i] == 0x5D){
+                buf3[i - removed] = 0x7D;
+            }else{
+                buf3[i - removed] = buf2[i]; 
+            }
+        }
+
+        buf3Size = buf2Size - removed;
+        uint8_t bcc2 = 0xFF;
+        
+        for(int i = 0; i < buf2Size - 1; i++){
+            bcc2 = bcc2 ^ buf3[i];
+        }
+    
+        res[0] = FLAG;
+        res[1] = ANSREC;
+        res[4] = FLAG;
+
+        if(bcc2 == buf3[buf3Size]){
+            for(int i = 0; i < buf2Size; i++){
+                packet[i] = buf3Size[i];
+            }
+
+            if(buf[2] == I0){ res[2] = RR1; }else{ res[2] = RR0; }
+            res[3] = res[1] ^ res[2];
+            
+            
+        }else{
+            if(buf[2] == I0){ res[2] = REJ0; }else{ res[2] = REJ1; }
+            res[3] = res[1] ^ res[2];
+        }
+        
+        writeBytes(res, 5);
+    }else if(buf[2] == DISC){ // TODO: send disc message
+        writeBytes(buf, 5);
+    }else if(buf[2] == CTRLSET){
+
+    }else if(buf[2] == CTRLUA){ // TODO: quit read cycle
+        
+    }
 
     return 0;
 }
