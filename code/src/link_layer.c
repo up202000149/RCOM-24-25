@@ -25,6 +25,9 @@
 #define REJ0 0x54
 #define REJ1 0x55
 #define DISC 0x0B
+#define C_SET 0x03
+#define C_UA 0x07
+#define C_DISC 0x0B
 
 #define MAX_ALARM_COUNT 3
 #define FALSE 0
@@ -246,8 +249,48 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {
-    /*
-    lltx
+    unsigned char DISC[5] = {FLAG, ANSSEN, C_DISC, ANSSEN ^ C_DISC, FLAG};
+    unsigned char UA[5] = {FLAG, ANSREC, C_UA, ANSREC ^ C_UA, FLAG};
+    unsigned char buf[5] = {0};
+    int bytesRead = 0;
+
+    if (connectionParameters.role == lltx) {
+
+        if (alarmCount < MAX_ALARM_COUNT) {
+            if (writeBytes(DISC, 5) < 0) {
+                return -1;
+            }
+
+            alarm(3);       
+        } else {
+            printf("Max retry limit reached. Exiting...\n");
+            exit(1); 
+        }
+
+        while (bytesRead < 5) {
+            bytesRead += readByte(&buf[bytesRead]);
+        }
+
+        if (buf[0] == FLAG && buf[1] == ANSREC && buf[2] == C_DISC && (buf[3] == (ANSSEN ^ C_DISC)) && buf[4] == FLAG) {
+            printf("Received DISC\n");
+            alarm(0);
+            if (writeBytes(UA, 5) < 0) {
+                return -1;
+            }
+            printf("UA response sent\n");
+            
+        } else {
+            printf("DISC not received\n");
+            return -1;
+        }
+
+    } else { //llrx
+        if (closeSerialPort() < 0) {
+            return -1;
+        }
+    }
+
+    /*lltx
         send disc
         await response
         send ua
