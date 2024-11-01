@@ -256,38 +256,44 @@ int llclose(int showStatistics)
 
     if (connectionParameters.role == lltx) {
 
-        if (alarmCount < MAX_ALARM_COUNT) {
+        alarmCount = 0;
+
+        while (alarmCount < MAX_ALARM_COUNT) {
             if (writeBytes(DISC, 5) < 0) {
                 return -1;
             }
 
-            alarm(3);       
-        } else {
-            printf("Max retry limit reached. Exiting...\n");
-            exit(1); 
-        }
+            alarm(3);     
+            bytesRead = 0;
 
-        while (bytesRead < 5) {
-            bytesRead += readByte(&buf[bytesRead]);
-        }
-
-        if (buf[0] == FLAG && buf[1] == ANSREC && buf[2] == C_DISC && (buf[3] == (ANSSEN ^ C_DISC)) && buf[4] == FLAG) {
-            printf("Received DISC\n");
-            alarm(0);
-            if (writeBytes(UA, 5) < 0) {
-                return -1;
+            while (bytesRead < 5) {
+                bytesRead += readByte(&buf[bytesRead]);
             }
-            printf("UA response sent\n");
-            
-        } else {
-            printf("DISC not received\n");
-            return -1;
+
+            if (buf[0] == FLAG && buf[1] == ANSREC && buf[2] == C_DISC && (buf[3] == (ANSSEN ^ C_DISC)) && buf[4] == FLAG) {
+                printf("Received DISC\n");
+                alarm(0);
+                if (writeBytes(UA, 5) < 0) {
+                    return -1;
+                }
+                printf("UA response sent\n");
+                break;
+                
+            } else {
+                printf("DISC not received, retrying...\n");
+                alarmCount++;
+            }
+
+        } if (alarmCount >= MAX_ALARM_COUNT) {
+            printf("Max retry limit reached. Exiting...\n");
+            return -1; 
         }
 
     } else { //llrx
         if (closeSerialPort() < 0) {
             return -1;
         }
+        return 1;
     }
 
     /*lltx
