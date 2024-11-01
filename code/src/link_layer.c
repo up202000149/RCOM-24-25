@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <stdint.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -37,13 +38,14 @@
 int alarmEnabled = FALSE;
 int alarmCount = 0;
 volatile int STOP = FALSE;
+LinkLayerRole role;
 
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
 
 enum State { FLAG_REC, A_REC, C_REC, BCC_OK, FLAG_REC_END };
-enum ReadState {START, FLAG_REC, A_REC, CS_REC, CI_REC, BCCS_OK, BCCI_OK, CONTENT_REC, STOP};
+enum ReadState {START, RFLAG_REC, RA_REC, CS_REC, CI_REC, BCCS_OK, BCCI_OK, CONTENT_REC, END};
 
 void processState(enum State *curState, unsigned char currByte) {
     switch (*curState) {
@@ -71,7 +73,7 @@ void processState(enum State *curState, unsigned char currByte) {
     }
 }
 
-void alarmHandler(int signal) {
+/*void alarmHandler(int signal) {
     alarmCount++;
     if (alarmCount < MAX_ALARM_COUNT) {
         buf[0] = FLAG;
@@ -87,7 +89,7 @@ void alarmHandler(int signal) {
         printf("Max retry limit reached. Exiting...\n");
         exit(1); 
     }
-}
+}*/
 
 int llopen(LinkLayer connectionParameters)
 {
@@ -96,6 +98,8 @@ int llopen(LinkLayer connectionParameters)
     {
         return -1;
     }
+
+    role = connectionParameters.role;
 
     unsigned char buf[BUF_SIZE + 1] = {0}; 
 
@@ -106,21 +110,20 @@ int llopen(LinkLayer connectionParameters)
         buf[3] = ANSSEN ^ CTRLSET;
         buf[4] = FLAG;
 
-        writeBytes(buf, 5);
+        writeBytes(buf, 5); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
 
         alarm(3);
 
         int bytes = 0;
 
         for (int i = 0; i < 5; i++) {
-            bytes += readByte(&buf[i]);
+            bytes += readByte(&buf[i]); //FIXME: warning: pointer targets in passing argument 1 of ‘readBytes’ differ in signedness
             printf("%d bytes read\n", bytes);
         }
 
-        if (bytes = 5 && buf[0] == FLAG && buf[1] == ANSREC && buf[2] == CTRLUA && (buf[3] == (ANSREC ^ CTRLUA)) && buf[4] == FLAG) {
+        if ((bytes == 5) && (buf[0] == FLAG) && (buf[1] == ANSREC) && (buf[2] == CTRLUA) && (buf[3] == (ANSREC ^ CTRLUA)) && (buf[4] == FLAG)) {
             printf("Success\n");
             alarm(0);
-            break;
         }
         else {
             printf("Error\n");
@@ -131,7 +134,7 @@ int llopen(LinkLayer connectionParameters)
         enum State curState = FLAG_REC;
 
         while (!STOP) {
-            int bytes = readByte(&buf[0]); 
+            int bytes = readByte(&buf[0]); //FIXME: warning: pointer targets in passing argument 1 of ‘readBytes’ differ in signedness
 
             if (bytes > 0) {
                 processState(&curState, buf[0]);
@@ -139,7 +142,7 @@ int llopen(LinkLayer connectionParameters)
                 if (curState == FLAG_REC_END) {
                     printf("sending UA\n");
                     unsigned char response[5] = {FLAG, ANSREC, CTRLUA, ANSREC ^ CTRLUA, FLAG};
-                    writeBytes(response, 5);
+                    writeBytes(response, 5); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
                     printf("UA frame sent\n");
                     STOP = TRUE;
                 }
@@ -219,9 +222,8 @@ int llwrite(const unsigned char *buf, int bufSize)
     
         //---------------------------
     
-        writeBytes(buf4, buf4Size);
+        writeBytes(buf4, buf4Size); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
         
-        readByte
     }
 
     // TODO: receive cycle
@@ -237,28 +239,29 @@ int llread(unsigned char *packet)
 {  
     enum ReadState state = START;
     int bytes = 0;
-    unsigned char buf[], res[5];//TODO: needs buf size
+    unsigned char buf[BUF_SIZE], res[5];//TODO: needs buf size
     uint8_t cur;
+    
 
-    while (state != STOP)
+    while (state != END)
     {   
         if(0 > readByte(cur)) break;
-        
+
         switch (state)
         {
         case START:
             if(cur == FLAG){
-                state = FLAG_REC;
+                state = RFLAG_REC;
                 buf[bytes++] = cur;
             }
             break;
-        case FLAG_REC:
+        case RFLAG_REC:
             if(cur == (ANSREC || ANSSEN)){
-                state = A_REC;
+                state = RA_REC;
                 buf[bytes++] = cur;
             }
             else if(cur == FLAG){
-                state = FLAG_REC;
+                state = RFLAG_REC;
                 bytes = 1;
             }
             else{
@@ -266,7 +269,7 @@ int llread(unsigned char *packet)
                 bytes = 0;
             }
             break;
-        case A_REC:
+        case RA_REC:
             if(cur == (CTRLSET || CTRLUA || DISC)){
                 state = CS_REC;
                 buf[bytes++] = cur;
@@ -276,7 +279,7 @@ int llread(unsigned char *packet)
                 buf[bytes++] = cur;
             }
             else if(cur == FLAG){
-                state = FLAG_REC;
+                state = RFLAG_REC;
                 bytes = 1;
             }
             else{
@@ -285,7 +288,7 @@ int llread(unsigned char *packet)
             }
             break;
         case CS_REC:
-            if(cur == buf[bytes - 1] ^ buf[bytes - 2]){
+            if(cur == (buf[bytes - 1] ^ buf[bytes - 2])){
                 state = BCCS_OK;
                 buf[bytes++] = cur;
             }
@@ -296,7 +299,7 @@ int llread(unsigned char *packet)
             }
             break;
         case CI_REC:
-            if(cur == buf[bytes - 1] ^ buf[bytes - 2]){
+            if(cur == (buf[bytes - 1] ^ buf[bytes - 2])){
                 state = BCCI_OK;
                 buf[bytes++] = cur;
             }
@@ -308,7 +311,7 @@ int llread(unsigned char *packet)
             break;
         case BCCS_OK:
             if(cur == FLAG){
-                state = STOP;
+                state = END;
                 buf[bytes] = cur;
             }
             else{
@@ -318,7 +321,7 @@ int llread(unsigned char *packet)
             break;
         case BCCI_OK:
             if(cur == FLAG){
-                state = FLAG_REC;
+                state = RFLAG_REC;
                 bytes = 1;
             }
             else{
@@ -328,13 +331,15 @@ int llread(unsigned char *packet)
             break;
         case CONTENT_REC:
             if(cur == FLAG){
-                state = STOP;
+                state = END;
                 buf[bytes] = cur; 
             }
             else{
                 state = CONTENT_REC;
                 buf[bytes++] = cur;
             }
+            break;
+        case END:
             break;
         }
     }
@@ -355,9 +360,9 @@ int llread(unsigned char *packet)
             if(buf2[i] == 0x7D){
                 flag = 1;
                 removed++;
-            }else if(buf2[i] == 0x5E){
+            }else if((buf2[i] == 0x5E) && flag){
                 buf3[i - removed] = 0x7E;
-            }else if(buf2[i] == 0x5D){
+            }else if((buf2[i] == 0x5D) && flag){
                 buf3[i - removed] = 0x7D;
             }else{
                 buf3[i - removed] = buf2[i]; 
@@ -377,7 +382,7 @@ int llread(unsigned char *packet)
 
         if(bcc2 == buf3[buf3Size]){
             for(int i = 0; i < buf2Size; i++){
-                packet[i] = buf3Size[i];
+                packet[i] = buf3[i];
             }
 
             if(buf[2] == I0){ res[2] = RR1; }else{ res[2] = RR0; }
@@ -389,9 +394,9 @@ int llread(unsigned char *packet)
             res[3] = res[1] ^ res[2];
         }
         
-        writeBytes(res, 5);
+        writeBytes(res, 5); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
     }else if(buf[2] == DISC){ // TODO: send disc message
-        writeBytes(buf, 5);
+        writeBytes(buf, 5); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
     }else if(buf[2] == CTRLSET){
 
     }else if(buf[2] == CTRLUA){ // TODO: quit read cycle
@@ -408,17 +413,17 @@ int llread(unsigned char *packet)
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {
-    unsigned char DISC[5] = {FLAG, ANSSEN, C_DISC, ANSSEN ^ C_DISC, FLAG};
+    unsigned char disc[5] = {FLAG, ANSSEN, C_DISC, ANSSEN ^ C_DISC, FLAG};
     unsigned char UA[5] = {FLAG, ANSREC, C_UA, ANSREC ^ C_UA, FLAG};
     unsigned char buf[5] = {0};
     int bytesRead = 0;
 
-    if (connectionParameters.role == lltx) {
+    if (role == LlTx) {
 
         alarmCount = 0;
 
         while (alarmCount < MAX_ALARM_COUNT) {
-            if (writeBytes(DISC, 5) < 0) {
+            if (writeBytes(disc, 5) < 0) { //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
                 return -1;
             }
 
@@ -426,13 +431,13 @@ int llclose(int showStatistics)
             bytesRead = 0;
 
             while (bytesRead < 5) {
-                bytesRead += readByte(&buf[bytesRead]);
+                bytesRead += readByte(&buf[bytesRead]); //FIXME: warning: pointer targets in passing argument 1 of ‘readBytes’ differ in signedness
             }
 
             if (buf[0] == FLAG && buf[1] == ANSREC && buf[2] == C_DISC && (buf[3] == (ANSSEN ^ C_DISC)) && buf[4] == FLAG) {
                 printf("Received DISC\n");
                 alarm(0);
-                if (writeBytes(UA, 5) < 0) {
+                if (writeBytes(UA, 5) < 0) { //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
                     return -1;
                 }
                 printf("UA response sent\n");

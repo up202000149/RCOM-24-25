@@ -32,8 +32,8 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
     switch (parameters.role)
     {
     case LlTx:
-        int fsize; // TODO: definitly wrong, needs to convert from int to several uint8_t
-        uint8_t fsize_size;
+        int fsize; // TODO: create function get file size
+        uint8_t fsize_size; // TODO: definitly wrong, needs to convert from int to several uint8_t
 
         unsigned char start[4] = {START, SIZE, fsize_size, fsize};
         unsigned char end[4] = {END, SIZE, fsize_size, fsize};
@@ -67,9 +67,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         break;
     
     case LlRx:
-        int end = FALSE;
+        int endFlag = 0;
         unsigned char r_packet[4 + BUF_SIZE] = {0};
-        while (!end)
+        while (!endFlag)
         {
             llread(r_packet);
             if(r_packet[0] == END){
