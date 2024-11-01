@@ -116,7 +116,7 @@ int llopen(LinkLayer connectionParameters)
             printf("%d bytes read\n", bytes);
         }
 
-        if (bytes = 5 && buf[0] = FLAG && buf[1] = ANSREC && buf[2] = CTRLUA && buf[3] = ANSREC ^ CTRLUA && buf[4] = FLAG) {
+        if (bytes = 5 && buf[0] == FLAG && buf[1] == ANSREC && buf[2] == CTRLUA && (buf[3] == (ANSREC ^ CTRLUA)) && buf[4] == FLAG) {
             printf("Success\n");
             alarm(0);
             break;
