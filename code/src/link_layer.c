@@ -18,6 +18,8 @@
 #define ANSSEN 0x01
 #define CTRLSET 0x03
 #define CTRLUA 0x07
+#define I0 0x00
+#define I1 0x80
 #define RR0 0xAA
 #define RR1 0xAB
 #define REJ0 0x54
@@ -141,20 +143,85 @@ int llopen(LinkLayer connectionParameters)
         }
     }
 
-    return -1;
-
-        
-}
-
-    return 1;
+    return 1;        
 }
 
 ////////////////////////////////////////////////
 // LLWRITE
 ////////////////////////////////////////////////
 int llwrite(const unsigned char *buf, int bufSize)
-{
-    // TODO
+{   
+    uint8_t bcc2;
+    int n;
+
+    if(buf[0] == 2){
+        n = buf[1] % 2;
+        
+        //-----------buf2------------
+        
+        unsigned char buf2[bufSize + 1];
+    
+        for(int i = 0; i < bufSize; i++){
+            bcc2 = bcc2 ^ buf[i];
+            buf2[i] = buf[i];
+        }
+    
+        buf2[bufSize] = bcc2;
+        int buf2Size = bufSize + 1;
+        
+        //-----------buf3------------
+        unsigned char buf3[buf2Size + bufSize - 4];
+        int stuffed = 0;
+
+        for(int i = 0; i < buf2Size; i++){
+            switch (buf2[i])
+            {
+            case 0x7E:
+                buf3[i + stuffed++] = 0x7D;
+                buf3[i + stuffed] = 0x5E;
+                break;
+            case 0x7D:
+                buf3[i + stuffed++] = 0x7D;
+                buf3[i + stuffed] = 0x5D;
+                break;
+            default:
+                buf3[i + stuffed] = buf2[i];
+                break;
+            }
+        }
+
+        int buf3Size = buf2Size + stuffed;
+        
+        //-----------buf4------------
+
+        int buf4Size = buf3Size + 5;
+        unsigned char buf4[buf4Size];
+        buf4[0] = FLAG;
+        buf4[1] = ANSREC;
+    
+        if(!n){
+            buf4[2] = I0;
+        }else{
+            buf4[2] = I1;
+        }
+    
+        buf4[3] = buf4[1] ^ buf4[2];
+
+        for(int i = 0; i < buf3Size; i++){
+            buf4[4 + i] = buf3[i];
+        }
+
+        buf4[buf4Size - 1] = FLAG;
+    
+        //---------------------------
+    
+        writeBytes(buf4, buf4Size);
+        
+        readByte
+    }
+
+    // TODO: receive cycle
+    
 
     return 0;
 }
@@ -163,18 +230,31 @@ int llwrite(const unsigned char *buf, int bufSize)
 // LLREAD
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
-{
-    // TODO
+{   
+    /*
+        await response
+        state machine
+    */
 
     return 0;
 }
+
+
 
 ////////////////////////////////////////////////
 // LLCLOSE
 ////////////////////////////////////////////////
 int llclose(int showStatistics)
 {
-    // TODO
+    /*
+    lltx
+        send disc
+        await response
+        send ua
+        close
+    llrx
+        close
+    */
 
     int clstat = closeSerialPort();
     return clstat;
