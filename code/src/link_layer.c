@@ -11,6 +11,8 @@
 #include <termios.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <signal.h>
+#include <stdio.h>
 
 // MISC
 #define _POSIX_SOURCE 1 // POSIX compliant source
@@ -39,7 +41,7 @@ int alarmEnabled = FALSE;
 int alarmCount = 0;
 volatile int STOP = FALSE;
 LinkLayerRole role;
-
+int packetCount;
 ////////////////////////////////////////////////
 // LLOPEN
 ////////////////////////////////////////////////
@@ -73,23 +75,14 @@ void processState(enum State *curState, unsigned char currByte) {
     }
 }
 
-/*void alarmHandler(int signal) {
+
+
+void alarmHandler(int signal) {
+    alarmEnabled = FALSE;
     alarmCount++;
-    if (alarmCount < MAX_ALARM_COUNT) {
-        buf[0] = FLAG;
-        buf[1] = ANSSEN;
-        buf[2] = CTRLSET;
-        buf[3] = ANSSEN ^ CTRLSET;
-        buf[4] = FLAG;
 
-        writeBytes(buf, 5);
-
-        alarm(3);       
-    } else {
-        printf("Max retry limit reached. Exiting...\n");
-        exit(1); 
-    }
-}*/
+    printf("Alarm #%d\n", alarmCount);
+}
 
 int llopen(LinkLayer connectionParameters)
 {
@@ -99,7 +92,10 @@ int llopen(LinkLayer connectionParameters)
         return -1;
     }
 
+    //(void)signal(SIGALRM, alarmHandler);
+
     role = connectionParameters.role;
+    packetCount = 0;
 
     unsigned char buf[BUF_SIZE + 1] = {0}; 
 
@@ -157,16 +153,16 @@ int llopen(LinkLayer connectionParameters)
 int llwrite(const unsigned char *buf, int bufSize)
 {   
     uint8_t bcc2 = 0xFF;
-    int n;
+    int n, written;
 
-    if(buf[0] == 2){
-        n = buf[1] % 2; //TODO: make work for other control fields
+        n = packetCount++ % 2;
         
         //-----------buf2------------
         
         unsigned char buf2[bufSize + 1];
-    
-        for(int i = 0; i < bufSize; i++){
+            bcc2 = buf[0];
+            buf2[0] = buf[0];
+        for(int i = 1; i < bufSize; i++){
             bcc2 = bcc2 ^ buf[i];
             buf2[i] = buf[i];
         }
@@ -219,15 +215,23 @@ int llwrite(const unsigned char *buf, int bufSize)
         buf4[buf4Size - 1] = FLAG;
     
         //---------------------------
+        /*while (alarmCount < 4) {
+            
+            if (alarmEnabled == FALSE) {
+                    alarm(3); // Set alarm to be triggered in 3s
+                    alarmEnabled = TRUE;
+                }
+        }*/
+       for(int i = 0; i < buf4Size; i++){
+        printf("0x%02X\n", buf4[i]);
+       }
+        written = writeBytes(buf4, buf4Size);
     
-        writeBytes(buf4, buf4Size); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
-        
-    }
 
     // TODO: receive cycle
     
 
-    return 0;
+    return written;
 }
 
 ////////////////////////////////////////////////
@@ -235,172 +239,95 @@ int llwrite(const unsigned char *buf, int bufSize)
 ////////////////////////////////////////////////
 int llread(unsigned char *packet)
 {  
-    enum ReadState state = START;
-    int bytes = 0;
-    unsigned char buf[BUF_SIZE], res[5];//TODO: needs buf size
+
+    int bytes = 0, aux = 1;
     unsigned char cur;
-    
+    unsigned char buf[1000], res[6];
 
-    while (state != END)
+    res[0] = FLAG;
+    res[4] = FLAG;
+    res[5] = '\n'; 
+
+    bytes += readByte(&cur);
+    while (cur != FLAG || aux)
     {   
-        if(0 > readByte(&cur)) break;
-
-        switch (state)
-        {
-        case START:
-            if(cur == FLAG){
-                state = RFLAG_REC;
-                buf[bytes++] = cur;
-            }
-            break;
-        case RFLAG_REC:
-            if(cur == (ANSREC || ANSSEN)){
-                state = RA_REC;
-                buf[bytes++] = cur;
-            }
-            else if(cur == FLAG){
-                state = RFLAG_REC;
-                bytes = 1;
-            }
-            else{
-                state = START;
-                bytes = 0;
-            }
-            break;
-        case RA_REC:
-            if(cur == (CTRLSET || CTRLUA || DISC)){
-                state = CS_REC;
-                buf[bytes++] = cur;
-            }
-            else if(cur == (I0 || I1)){
-                state = CI_REC;
-                buf[bytes++] = cur;
-            }
-            else if(cur == FLAG){
-                state = RFLAG_REC;
-                bytes = 1;
-            }
-            else{
-                state = START;
-                bytes = 0;
-            }
-            break;
-        case CS_REC:
-            if(cur == (buf[bytes - 1] ^ buf[bytes - 2])){
-                state = BCCS_OK;
-                buf[bytes++] = cur;
-            }
-            else{
-                printf("bcc1 rejected");
-                state = START;
-                bytes = 0;
-            }
-            break;
-        case CI_REC:
-            if(cur == (buf[bytes - 1] ^ buf[bytes - 2])){
-                state = BCCI_OK;
-                buf[bytes++] = cur;
-            }
-            else{
-                printf("bcc1 rejected");
-                state = START;
-                bytes = 0;
-            }
-            break;
-        case BCCS_OK:
-            if(cur == FLAG){
-                state = END;
-                buf[bytes] = cur;
-            }
-            else{
-                state = START;
-                bytes = 0;
-            }
-            break;
-        case BCCI_OK:
-            if(cur == FLAG){
-                state = RFLAG_REC;
-                bytes = 1;
-            }
-            else{
-                state = CONTENT_REC;
-                buf[bytes++] = cur;
-            }
-            break;
-        case CONTENT_REC:
-            if(cur == FLAG){
-                state = END;
-                buf[bytes] = cur; 
-            }
-            else{
-                state = CONTENT_REC;
-                buf[bytes++] = cur;
-            }
-            break;
-        case END:
-            break;
-        }
+        aux = 0;
+        buf[bytes - 1] = cur;
+        bytes += readByte(&cur);
     }
+    buf[bytes - 1] = cur;
     
-    if(buf[2] == (I0 || I1)){
-        int buf2Size = bytes - 4;
+    if((buf[1] ^ buf[2]) != buf[3]){
+        //reject
+    }
+
+    res[1] = buf[1];
+
+    if(buf[2] == CTRLSET){
+        res[2] = CTRLUA;
+        res[3] = res[1] ^ res[2];
+        return writeBytes(res, 6);
+    }else if(buf[2] == DISC){
+        res[2] = DISC;
+        res[3] = res[1] ^ res[2];
+        return writeBytes(res, 6);
+    }else if(buf[2] == CTRLUA){
+    
+    }else if(buf[2] == I0 || buf[2] == I1){
+        int buf2Size = bytes - 5;
         unsigned char buf2[buf2Size];
 
-        for(int i = 0; i < buf2Size; i++){
-            buf2[i] = buf[i + 4];
+        for(int i = 4; i < bytes - 1; i++){
+            buf2[i - 4] = buf[i];
         }
 
         int buf3Size;
         unsigned char buf3[buf2Size];
         int removed = 0, flag = 0;
-
+        
         for(int i = 0; i < buf2Size; i++){
-            if(buf2[i] == 0x7D){
+            if(buf2[i - removed] == 0x7D){
                 flag = 1;
                 removed++;
             }else if((buf2[i] == 0x5E) && flag){
                 buf3[i - removed] = 0x7E;
+                flag = 0;
             }else if((buf2[i] == 0x5D) && flag){
                 buf3[i - removed] = 0x7D;
+                flag = 0;
             }else{
                 buf3[i - removed] = buf2[i]; 
             }
         }
 
         buf3Size = buf2Size - removed;
-        uint8_t bcc2 = 0xFF;
-        
-        for(int i = 0; i < buf2Size - 1; i++){
+        uint8_t bcc2 = buf3[0];
+
+        for(int i = 1; i < buf3Size - 1; i++){
             bcc2 = bcc2 ^ buf3[i];
         }
-    
-        res[0] = FLAG;
-        res[1] = ANSREC;
-        res[4] = FLAG;
 
-        if(bcc2 == buf3[buf3Size]){
-            for(int i = 0; i < buf2Size; i++){
+        if(bcc2 == buf3[buf3Size - 1]){
+            printf("\nlink\n");
+            for(int i = 0; i < buf3Size; i++){
                 packet[i] = buf3[i];
+                printf("0x%02X\n", packet[i]);
             }
 
             if(buf[2] == I0){ res[2] = RR1; }else{ res[2] = RR0; }
             res[3] = res[1] ^ res[2];
             
-            
+            writeBytes(res, 6);
+            return buf3Size;
         }else{
             if(buf[2] == I0){ res[2] = REJ0; }else{ res[2] = REJ1; }
             res[3] = res[1] ^ res[2];
+            writeBytes(res, 6);
+
+            return 0;
         }
-        
-        writeBytes(res, 5); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
-    }else if(buf[2] == DISC){ // TODO: send disc message
-        writeBytes(buf, 5); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
-    }else if(buf[2] == CTRLSET){
-
-    }else if(buf[2] == CTRLUA){ // TODO: quit read cycle
-        
     }
-
+    
     return 0;
 }
 
