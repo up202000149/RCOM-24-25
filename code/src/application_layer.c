@@ -12,14 +12,13 @@
 
 #define SIZE 0x00
 #define NAME 0x01
-#define BUF_SIZE 512
+#define BUF_SIZE 4096
 
 int fileSize(FILE *f){
     int size;
     fseek(f, 0, SEEK_END);
     size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    printf("%d\n", size);
 
     return size;
 }
@@ -38,7 +37,7 @@ int sizeConvert(unsigned char *sizeArray, uint32_t size){
 
 int getData(unsigned char *data, FILE *f){
     int cur, size = 0;
-    for(int i = 0; i < 512; i++){
+    for(int i = 0; i < BUF_SIZE; i++){
         cur = fgetc(f);
         if(cur != EOF){
             data[i] = cur;
@@ -91,9 +90,9 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         for(int i = fsize_size - 1;i >= 0; i--){
             start[3 + cnt++] = convSize[i];
         }
-        
+        printf("Attempting write\n");
         printf("%d bytes written\n", llwrite(start, 3 + fsize_size));
-        
+
         uint16_t size;
         unsigned char data[BUF_SIZE];
         uint8_t count = 0;
@@ -119,35 +118,36 @@ void applicationLayer(const char *serialPort, const char *role, int baudRate,
         
     }else{
         f = fopen(filename, "w");
-        printf("enter switch\n");
-        int fileSize, fileSize2 = 0, packetSize;
+        int fileSize = 0, packetSize, flag = FALSE;
         unsigned char r_packet[4 + BUF_SIZE];
 
         while (TRUE)
         {
-            
             packetSize = llread(&r_packet);
-            fileSize2 += packetSize;
+            if(packetSize < 0) break;
             printf("Read %d bytes\n", packetSize);
-            
-            printf("\ncode 0x%02X\n", r_packet[0]);
-            for(int i = 0; i < packetSize; i++){
-                //printf("0x%02X\n", r_packet[i]);
-            }
-            
+                        
             if(r_packet[0] == START){
-                fileSize = r_packet[2] * 256 + r_packet[3];
-            }else if(r_packet[0] == END){
-                printf("%d %d", fileSize, fileSize2);
-                break;
-            }else if(r_packet[0] == DATA){
-                saveData(r_packet, packetSize, f);
-                printf("\nsuccess\n");
-                
+                fileSize = 0;
+                flag = TRUE;
             }
+
+            if(flag == TRUE){
+                if(r_packet[0] == END){
+                    if((r_packet[3] * 256 + r_packet[4]) == fileSize){
+                        printf("File size matches expected\n");
+                    }else{ 
+                        printf("File size doesn't match expected\n");
+                    }
+                    flag = FALSE;
+                }else if(r_packet[0] == DATA){
+                    fileSize += saveData(r_packet, packetSize, f);
+                }
+            }   
         }
     }
 
-   fclose(f);
-   llclose(0);
+    printf("Transfer complete, exiting program.\n");
+    fclose(f);
+    llclose(1);
 }
