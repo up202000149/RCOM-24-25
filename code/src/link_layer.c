@@ -90,8 +90,6 @@ int llopen(LinkLayer connectionParameters)
         return -1;
     }
 
-    (void)signal(SIGALRM, alarmHandler);
-
     role = connectionParameters.role;
     max_tries = connectionParameters.nRetransmissions;
     max_timeout = connectionParameters.timeout;
@@ -109,7 +107,7 @@ int llopen(LinkLayer connectionParameters)
         buf[3] = ANSSEN ^ CTRLSET;
         buf[4] = FLAG;
 
-        writeBytes(buf, 5); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
+        writeBytes(buf, 5);
 
         alarm(max_timeout);
 
@@ -130,7 +128,7 @@ int llopen(LinkLayer connectionParameters)
         enum State curState = FLAG_REC;
 
         while (!STOP) {
-            int bytes = readByte(&buf[0]); //FIXME: warning: pointer targets in passing argument 1 of ‘readBytes’ differ in signedness
+            int bytes = readByte(&buf[0]);
 
             if (bytes > 0) {
                 processState(&curState, buf[0]);
@@ -138,7 +136,7 @@ int llopen(LinkLayer connectionParameters)
                 if (curState == FLAG_REC_END) {
                     printf("sending UA\n");
                     unsigned char response[5] = {FLAG, ANSREC, CTRLUA, ANSREC ^ CTRLUA, FLAG};
-                    writeBytes(response, 5); //FIXME: warning: pointer targets in passing argument 1 of ‘writeBytes’ differ in signedness
+                    writeBytes(response, 5);
                     printf("UA frame sent\n");
                     STOP = TRUE;
                 }
@@ -156,8 +154,6 @@ int llwrite(const unsigned char *buf, int bufSize)
 {   
     uint8_t bcc2 = 0xFF;
     int n, written;
-    
-    (void)signal(SIGALRM, alarmHandler);
        
         n = packetCount++ % 2;
         
@@ -220,21 +216,18 @@ int llwrite(const unsigned char *buf, int bufSize)
     
         unsigned char res[6];
         unsigned char cur;
-        int bytesRead = 0;
+        int bytesRead = 0, tries = 0;
         alarmCount = 0;
         enum ReadState state = START;
 
         while (alarmCount < max_tries) {
             written = writeBytes(buf4, buf4Size);
-            sleep(1);
             if (written < 0) {
                 return -1;
             }
             
-            if (alarmEnabled == FALSE){
-                alarm(max_timeout);
-                alarmEnabled = TRUE;
-            }    
+            alarm(max_timeout);
+                
             bytesRead = 0;
 
             while (bytesRead < 5) {
@@ -295,7 +288,7 @@ int llwrite(const unsigned char *buf, int bufSize)
                 }
                 
             }
-            
+
             if ((res[0] == FLAG) && (res[1] == ANSREC) && ((res[2] == RR0) || (res[2] == RR1)) && (res[3] == (res[1] ^ res[2])) && (res[4] == FLAG)) {
                 printf("Received RR\n");
                 alarm(0);
@@ -303,13 +296,12 @@ int llwrite(const unsigned char *buf, int bufSize)
                 
             }else if ((res[0] == FLAG) && (res[1] == ANSREC) && ((res[2] == REJ0) || (res[2] == REJ1)) && (res[3] == (res[1] ^ res[2])) && (res[4] == FLAG)) {
                 printf("Received REJ\n");
-                alarmCount++;
-                break;
-                
+                retransmissions++;
+                if(tries++ > max_tries) break;
             }else {
                 printf("Response not received, retrying...\n");
-                alarmCount++;
                 retransmissions++;
+                if(tries++ > max_tries) break;
             }
 
         } if (alarmCount >= max_tries) {
@@ -518,7 +510,6 @@ int llclose(int showStatistics)
     
     if (role == LlTx) {
 
-        (void)signal(SIGALRM, alarmHandler);
         alarmCount = 0;
 
         if (writeBytes(disc, 5) < 0) {
@@ -526,18 +517,15 @@ int llclose(int showStatistics)
         }
         sleep(1);
 
-        while (alarmCount < max_timeout) {
-            
-            if (alarmEnabled == FALSE){
-                alarm(3);
-                alarmEnabled = TRUE;
-            }
+        while (alarmCount < max_tries) { 
+
+            alarm(max_timeout);
             
             bytesRead = 0;
             state = START;
 
             while (bytesRead < 5) {
-                readByte(&cur);
+                if(readByte(&cur) == 0) break;
 
                 switch (state)
                 {
@@ -617,7 +605,7 @@ int llclose(int showStatistics)
                 sleep(1);
             }
 
-        } if (alarmCount >= max_timeout) {
+        } if (alarmCount >= max_tries) {
             printf("Max time limit reached. Exiting...\n");
             timeouts++;
             if(showStatistics){
